@@ -30,9 +30,9 @@ local function do_unit_action(action_name)
   if unit_info.scope == 'system' then cmd = { 'sudo' } end
 
   if action_name == 'follow' then
-    cmd = lc.tbl_extend(cmd, { 'journalctl', '--' .. unit_info.scope, '-xef', '--unit=' .. unit_info.unit })
+    cmd = lc.tbl_extend('force', cmd, { 'journalctl', '--' .. unit_info.scope, '-xef', '--unit=' .. unit_info.unit })
   else
-    cmd = lc.tbl_extend(cmd, { 'systemctl', '--' .. unit_info.scope, action_name, unit_info.unit })
+    cmd = lc.tbl_extend('force', cmd, { 'systemctl', '--' .. unit_info.scope, action_name, unit_info.unit })
   end
 
   lc.interactive(cmd, { wait_confirm = function(exit_code) return exit_code ~= 0 end }, function(exit_code)
