@@ -20,7 +20,7 @@ local unit_types = {
 function M.setup()
   lc.keymap.set('main', '<enter>', function()
     local path = lc.api.get_current_path()
-    if #path < 2 then
+    if #path < 3 then
       lc.cmd 'enter'
     else
       require('systemd.action').select_action()
@@ -53,7 +53,7 @@ local function list_level_2(path, cb)
       key = unit_type.name,
       display = lc.style.line({ (unit_type.icon .. ' ' .. unit_type.name):fg 'yellow' }),
       unit_type = unit_type.name,
-      scope = path[1],
+      scope = path[2],
     })
   end
   cb(entries)
@@ -61,8 +61,8 @@ end
 
 -- 第3级：显示指定类型和作用域的所有单元
 local function list_level_3(path, cb)
-  local scope = path[1] -- system 或 user
-  local unit_type = path[2] -- service, mount 等
+  local scope = path[2] -- system 或 user
+  local unit_type = path[3] -- service, mount 等
 
   -- 使用 JSON 输出获取单元列表
   local cmd =
@@ -126,13 +126,13 @@ local function list_level_3(path, cb)
 end
 
 function M.list(path, cb)
-  if #path == 0 then
+  if #path == 1 then
     -- 第1级：system / user
     list_level_1(cb)
-  elseif #path == 1 then
+  elseif #path == 2 then
     -- 第2级：单元类型
     list_level_2(path, cb)
-  elseif #path == 2 then
+  elseif #path == 3 then
     -- 第3级：具体单元
     list_level_3(path, cb)
   else
@@ -144,14 +144,14 @@ function M.preview(entry, cb)
   local path = lc.api.get_current_path()
 
   -- 第1级：显示提示信息
-  if #path == 0 then
+  if #path == 1 then
     cb 'Select system or user scope'
     return
   end
 
   -- 第2级：显示类型描述
-  if #path == 1 then
-    local scope = path[1]
+  if #path == 2 then
+    local scope = path[2]
     local lines = {
       'Scope: ' .. scope,
       '',
@@ -165,8 +165,8 @@ function M.preview(entry, cb)
   end
 
   -- 第3级：显示单元详细状态
-  if #path == 2 and entry and entry.unit then
-    local scope = path[1]
+  if #path == 3 and entry and entry.unit then
+    local scope = path[2]
     lc.system({ 'systemctl', '--' .. scope, 'status', '--no-pager', '--', entry.unit }, {
       env = {
         SYSTEMD_COLORS = '1',
