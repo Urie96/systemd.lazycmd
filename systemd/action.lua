@@ -28,6 +28,16 @@ local function get_unit_status(unit_info, callback)
   )
 end
 
+-- 控制类动作：非交互执行，系统作用域通过 deck.system.exec 的 sudo 字段升级为 sudo
+local CONTROL_ACTIONS = {
+  start = true,
+  stop = true,
+  restart = true,
+  enable = true,
+  disable = true,
+  reload = true,
+}
+
 local function do_unit_action(action_name)
   local unit_info = get_selected_unit()
   if not unit_info then
@@ -35,27 +45,50 @@ local function do_unit_action(action_name)
     return
   end
 
-  local cmd = {}
-  if unit_info.scope == 'system' then cmd = { 'sudo' } end
+  local needs_sudo = unit_info.scope == 'system'
 
-  if action_name == 'follow' then
-    cmd = deck.tbl_extend(
-      'force',
-      cmd,
-      { config.get().journal_command, '--' .. unit_info.scope, '-xef', '--unit=' .. unit_info.unit }
-    )
-  else
-    cmd = deck.tbl_extend('force', cmd, { config.get().command, '--' .. unit_info.scope, action_name, unit_info.unit })
+  -- 交互式动作（follow/edit/show/cat 需要终端输出）：保持 interactive，
+  -- 系统作用域仍用 sudo（走 tty 提示符）
+  if not CONTROL_ACTIONS[action_name] then
+    local cmd = {}
+    if needs_sudo then cmd = { 'sudo' } end
+
+    if action_name == 'follow' then
+      cmd = deck.tbl_extend(
+        'force',
+        cmd,
+        { config.get().journal_command, '--' .. unit_info.scope, '-xef', '--unit=' .. unit_info.unit }
+      )
+    else
+      cmd = deck.tbl_extend('force', cmd, { config.get().command, '--' .. unit_info.scope, action_name, unit_info.unit })
+    end
+
+    deck.interactive(cmd, { wait_confirm = function(exit_code) return exit_code ~= 0 end }, function(exit_code)
+      if exit_code == 0 then
+        deck.notify(action_name .. ' for ' .. unit_info.unit .. ' successfully')
+        deck.cmd 'reload'
+      else
+        deck.notify(action_name .. ' for ' .. unit_info.unit .. ' failed')
+      end
+    end)
+    return
   end
 
-  deck.interactive(cmd, { wait_confirm = function(exit_code) return exit_code ~= 0 end }, function(exit_code)
-    if exit_code == 0 then
-      deck.notify(action_name .. ' for ' .. unit_info.unit .. ' successfully')
+  -- 控制类动作：非交互执行；系统作用域通过 sudo 字段（先探测免密，需要时弹输入框输入密码）
+  deck.system.exec(
+    { config.get().command, '--' .. unit_info.scope, action_name, unit_info.unit },
+    { sudo = needs_sudo },
+    function(out)
+      if out.code == 0 then
+        deck.notify(action_name .. ' for ' .. unit_info.unit .. ' successfully')
+      else
+        local detail = (out.stderr or ''):gsub('%s+$', '')
+        if detail == '' then detail = (out.stdout or ''):gsub('%s+$', '') end
+        deck.notify(action_name .. ' for ' .. unit_info.unit .. ' failed' .. (detail ~= '' and (': ' .. detail) or ''))
+      end
       deck.cmd 'reload'
-    else
-      deck.notify(action_name .. ' for ' .. unit_info.unit .. ' failed')
     end
-  end)
+  )
 end
 
 function M.restart() do_unit_action 'restart' end
